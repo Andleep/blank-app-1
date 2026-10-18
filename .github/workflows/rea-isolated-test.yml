@@ -43,6 +43,51 @@ jobs:
           grep -q '"integrity_contradictions":\[\]' rea-jarvis-analysis.json
           grep -q 'App.jsx' rea-jarvis-analysis.json
           grep -q 'OrbScene' rea-jarvis-analysis.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const raw = fs.readFileSync('rea-jarvis-analysis.json', 'utf8');
+          const line = raw.split(/\r?\n/).find(x => x.includes('"evidence_id"') && x.includes('"normalized_result"'));
+          if (!line) throw new Error('REA evidence JSON line missing');
+          const ev = JSON.parse(line.slice(line.indexOf('{"evidence_id"')));
+          const result = ev.normalized_result || {};
+          const graph = result.graph || {};
+          const nodes = graph.nodes || [];
+          const labels = nodes.flatMap(n => (n.observations || []).map(o => ({
+            kind: n.kind,
+            label: o.label,
+            path: o.properties?.path || null,
+            parse_status: o.properties?.parse_status || null
+          })));
+          const relationships = [];
+          const walk = (v) => {
+            if (!v || typeof v !== 'object') return;
+            if (Array.isArray(v)) { for (const x of v) walk(x); return; }
+            if (typeof v.specifier === 'string' || typeof v.resolved_path === 'string') {
+              relationships.push({
+                kind: v.kind || v.relationship_type || v.type || null,
+                specifier: v.specifier || null,
+                resolved_path: v.resolved_path || null,
+                resolution_status: v.resolution_status || null
+              });
+            }
+            for (const x of Object.values(v)) walk(x);
+          };
+          walk(graph);
+          const summary = {
+            evidence_id: ev.evidence_id,
+            provider: ev.provider?.name,
+            subject: ev.subject?.name,
+            input_path: result.input_path,
+            integrity_contradictions: result.integrity_contradictions || [],
+            graph_keys: Object.keys(graph),
+            node_count: nodes.length,
+            node_kinds: [...new Set(nodes.map(n => n.kind))],
+            source_files: labels.filter(x => x.path).map(x => x.path).filter((x, i, a) => a.indexOf(x) === i).slice(0, 100),
+            relationship_samples: relationships.slice(0, 100)
+          };
+          fs.writeFileSync('rea-jarvis-summary.json', JSON.stringify(summary, null, 2));
+          console.log('REA_JARVIS_SUMMARY=' + JSON.stringify(summary));
+          NODE
       - name: Save evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -52,4 +97,5 @@ jobs:
             rea-doctor.json
             rea-analysis.json
             rea-jarvis-analysis.json
+            rea-jarvis-summary.json
           if-no-files-found: warn
