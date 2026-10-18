@@ -1,0 +1,45 @@
+name: REA isolated experiment
+on:
+  push:
+    branches: [test/rea-isolated-experiment]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rea-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check REA host readiness
+        shell: bash
+        run: |
+          set +e
+          npx -y rea-agents@latest doctor --json > rea-doctor.json 2>&1
+          code=$?
+          echo "REA_DOCTOR_EXIT=$code"
+          cat rea-doctor.json
+          exit 0
+      - name: Analyze isolated JavaScript fixture
+        shell: bash
+        run: |
+          set +e
+          npx -y rea-agents@latest analyze-javascript-application ./rea-fixture --json > rea-analysis.json 2>&1
+          code=$?
+          echo "REA_ANALYSIS_EXIT=$code"
+          cat rea-analysis.json
+          echo "$code" > rea-analysis-exit.txt
+          exit 0
+      - name: Save evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-experiment-evidence
+          path: |
+            rea-doctor.json
+            rea-analysis.json
+            rea-analysis-exit.txt
+          if-no-files-found: warn
