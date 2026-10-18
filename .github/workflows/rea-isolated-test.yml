@@ -26,13 +26,23 @@ jobs:
       - name: Analyze isolated JavaScript fixture
         shell: bash
         run: |
-          set +e
+          set -e
           npx -y rea-agents@latest analyze-javascript-application ./rea-fixture --json > rea-analysis.json 2>&1
-          code=$?
-          echo "REA_ANALYSIS_EXIT=$code"
-          cat rea-analysis.json
-          echo "$code" > rea-analysis-exit.txt
-          exit 0
+          echo "REA_FIXTURE_ANALYSIS_EXIT=0"
+          grep -q '"evidence_id"' rea-analysis.json
+          grep -q '"integrity_contradictions":\[\]' rea-analysis.json
+      - name: Fetch public Jarvis voice-assistant source
+        run: git clone --depth 1 https://github.com/strangedeev/jarvis.git /tmp/jarvis
+      - name: Analyze real Jarvis frontend with REA
+        shell: bash
+        run: |
+          set -e
+          npx -y rea-agents@latest analyze-javascript-application /tmp/jarvis/jarvis-ui --json > rea-jarvis-analysis.json 2>&1
+          echo "REA_JARVIS_ANALYSIS_EXIT=0"
+          grep -q '"evidence_id"' rea-jarvis-analysis.json
+          grep -q '"integrity_contradictions":\[\]' rea-jarvis-analysis.json
+          grep -q 'App.jsx' rea-jarvis-analysis.json
+          grep -q 'OrbScene' rea-jarvis-analysis.json
       - name: Save evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -41,5 +51,5 @@ jobs:
           path: |
             rea-doctor.json
             rea-analysis.json
-            rea-analysis-exit.txt
+            rea-jarvis-analysis.json
           if-no-files-found: warn
